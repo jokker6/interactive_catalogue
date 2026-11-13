@@ -1,31 +1,22 @@
 {
   "parts": [
     {
-      "id": "demo-front",
-      "name": "Front section part (demo)",
-      "code": "K6-0001",
-      "category": "Body front",
-      "description": "Placeholder positioned by the body's bounding box. Replace it with a real CAD part by adding a line like \"file\": \"parts/K6-0001.step\" and removing the \"demo\" line.",
-      "info": { "Material": "Steel", "Condition": "New", "Price": "-" },
-      "demo": { "shape": "box", "anchor": [0.5, 0.35, 0.92], "sizeFrac": [0.45, 0.12, 0.08] }
+      "id": "bumper",
+      "name": "Bumper",
+      "code": "BUMPER-001",
+      "category": "Body",
+      "description": "Front bumper.",
+      "info": { "Material": "Carbon" },
+      "file": "parts/bumper.step"
     },
     {
-      "id": "demo-rear",
-      "name": "Rear section part (demo)",
-      "code": "K6-0002",
-      "category": "Body rear",
-      "description": "Second placeholder. If the body's long axis is different from what was assumed, change the anchor and sizeFrac values (x, y, z).",
-      "info": { "Material": "Aluminium", "Condition": "Used", "Price": "-" },
-      "demo": { "shape": "box", "anchor": [0.5, 0.35, 0.08], "sizeFrac": [0.45, 0.12, 0.08] }
-    },
-    {
-  "id": "fender",
-  "name": "Fender",
-  "code": "FENDER-001",
-  "category": "Body",
-  "description": "Short description.",
-  "info": { "Material": "Steel" },
-  "file": "parts/fender.step"
-}
+      "id": "fender",
+      "name": "Fender",
+      "code": "FENDER-001",
+      "category": "Body",
+      "description": "Right front fender",
+      "info": { "Material": "Carbon" },
+      "file": "parts/fender.step"
+    }
   ]
 }
