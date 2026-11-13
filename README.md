@@ -52,6 +52,12 @@ Remember the comma between entries. File names are case-sensitive on GitHub Page
 
 A part stays where it is in its file, so export parts from the same coordinate system and in millimetres, like the body scan.
 
+## Selecting and hiding parts
+
+- **Click a part** (or its name in the list): it stays enlarged and highlighted, and the other parts fade, like the body. Click empty space or the x on the info card to bring everything back.
+- **Right-click a part** (in the 3D view or in the list): that part becomes transparent and stays so until you right-click it again, so you can look at what is behind it. This lasts until the page is reloaded.
+- **Show all parts** (bottom left) makes all transparent parts solid again.
+
 ## Part picture
 
 When you click a part, a picture of it appears at the bottom of the info card. By default the page renders it from the 3D part itself. To use your own picture instead, add `"image": "images/bumper.png"` to the part's entry (and put the file in `images/`).

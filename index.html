@@ -78,6 +78,8 @@
     color: #1a1205; font-weight: 600; font-size: 15px; cursor: pointer; }
   #gate-form button:disabled { opacity: .6; cursor: default; }
   #gate-msg { min-height: 18px; color: #ffb4b4; font-size: 13px; }
+  .item.ghosted .n, .item.ghosted .c { opacity: .4; }
+  .item.ghosted .n::after { content: ' (transparent)'; font-size: 11px; color: var(--muted); }
   #hint { position: absolute; left: 14px; bottom: 12px; color: var(--muted); font-size: 12px;
     pointer-events: none; }
   @media (max-width: 800px) {
@@ -123,7 +125,7 @@
         <label for="opacity">Opacity</label>
         <input id="opacity" type="range" min="0.05" max="0.8" step="0.01" value="0.25">
       </div>
-      <div class="row"><button id="reset">Reset view</button></div>
+      <div class="row"><button id="reset">Reset view</button><button id="unghost">Show all parts</button></div>
     </div>
   </aside>
   <main id="view">
@@ -131,7 +133,7 @@
     <div id="warn"></div>
     <div id="tip"></div>
     <div id="card"></div>
-    <div id="hint">Left mouse: rotate · Right mouse: pan · Wheel: zoom · Click a part: details</div>
+    <div id="hint">Drag: rotate · Right-drag: pan · Wheel: zoom · Click a part: select (others fade) · Right-click a part: transparent / solid</div>
   </main>
 </div>
 
@@ -467,6 +469,14 @@ function showWarnings() {
 }
 
 // ---------- Highlight ----------
+const FADE_OPACITY = 0.14;   // opacity of parts that are faded (not selected, or switched to transparent)
+
+function toggleGhost(rec) {
+  if (!rec) return;
+  rec.ghost = !rec.ghost;
+  refreshHighlight();
+}
+
 function refreshHighlight() {
   for (const r of parts) {
     const on = r === hovered || r === selected;
@@ -478,6 +488,8 @@ function refreshHighlight() {
   listEl.querySelectorAll('.item').forEach(li => {
     li.classList.toggle('hover', hovered && li.dataset.id === hovered.def.id);
     li.classList.toggle('selected', selected && li.dataset.id === selected.def.id);
+    const rec = parts.find(p => p.def.id === li.dataset.id);
+    li.classList.toggle('ghosted', !!(rec && rec.ghost));
   });
 }
 
@@ -544,6 +556,8 @@ function makeThumb(rec, size = 480) {
   rec.pivot.scale.setScalar(1);
   rec.pivot.updateMatrixWorld(true);
   const emissive = rec.meshes.map(m => m.material.emissive.getHex());
+  const fadeState = rec.meshes.map(m => [m.material.opacity, m.material.transparent, m.material.depthWrite]);
+  rec.meshes.forEach(m => { m.material.opacity = 1; m.material.transparent = false; m.material.depthWrite = true; });
   rec.meshes.forEach(m => m.material.emissive.setHex(0));
   const sphere = new THREE.Box3().setFromObject(rec.pivot).getBoundingSphere(new THREE.Sphere());
   const cam = new THREE.PerspectiveCamera(35, 1, sphere.radius / 50, sphere.radius * 50);
@@ -562,7 +576,10 @@ function makeThumb(rec, size = 480) {
   scene.background = prevBg;
   hidden.forEach(c => { c.visible = true; });
   rec.pivot.scale.setScalar(prevScale);
-  rec.meshes.forEach((m, i) => m.material.emissive.setHex(emissive[i]));
+  rec.meshes.forEach((m, i) => {
+    m.material.emissive.setHex(emissive[i]);
+    [m.material.opacity, m.material.transparent, m.material.depthWrite] = fadeState[i];
+  });
   renderer.render(scene, camera);
   return url;
 }
@@ -615,8 +632,11 @@ renderer.domElement.addEventListener('pointerup', e => {
   if (!down) return;
   const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
   down = null;
-  if (moved < 5) select(pick(e));
+  if (moved >= 5) return;
+  if (e.button === 2) toggleGhost(pick(e));      // right-click: transparent <-> solid
+  else if (e.button === 0) select(pick(e));      // left-click: select (click empty space to deselect)
 });
+renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
 
 // ---------- Sidebar ----------
 function buildList() {
@@ -636,6 +656,7 @@ function buildList() {
       li.onmouseenter = () => setHover(r);
       li.onmouseleave = () => setHover(null);
       li.onclick = () => select(r, true);
+      li.oncontextmenu = e => { e.preventDefault(); toggleGhost(r); };
       listEl.append(li);
     }
   }
@@ -656,6 +677,10 @@ document.getElementById('search').addEventListener('input', e => {
 document.querySelectorAll('[data-mode]').forEach(b =>
   b.addEventListener('click', () => { bodyMode = b.dataset.mode; applyBodyMode(); }));
 document.getElementById('opacity').addEventListener('input', applyBodyMode);
+document.getElementById('unghost').addEventListener('click', () => {
+  parts.forEach(r => { r.ghost = false; });
+  refreshHighlight();
+});
 document.getElementById('reset').addEventListener('click', () => {
   camera.position.copy(home.pos); controls.target.copy(home.target); select(null);
 });
@@ -664,9 +689,29 @@ document.getElementById('reset').addEventListener('click', () => {
 function animate() {
   requestAnimationFrame(animate);
   for (const r of parts) {
-    const t = r === hovered ? 1.15 : (r === selected ? 1.08 : 1);
+    const t = r === selected ? 1.2 : (r === hovered ? 1.12 : 1);
     const s = r.pivot.scale.x + (t - r.pivot.scale.x) * 0.18;
     r.pivot.scale.setScalar(s);
+
+    // fade: the other parts fade while one is selected; right-clicked parts stay transparent
+    const faded = r.ghost || (selected && r !== selected);
+    const target = faded ? FADE_OPACITY : 1;
+    const cur = r.opacity ?? 1;
+    if (Math.abs(cur - target) > 0.002) {
+      r.opacity = cur + (target - cur) * 0.2;
+      const solid = r.opacity > 0.995;
+      for (const m of r.meshes) {
+        const mat = m.material;
+        if (mat.transparent === solid) { mat.transparent = !solid; mat.depthWrite = solid; mat.needsUpdate = true; }
+        mat.opacity = solid ? 1 : r.opacity;
+      }
+    } else if (cur !== target) {
+      r.opacity = target;
+      for (const m of r.meshes) {
+        m.material.opacity = target;
+        m.material.transparent = target < 1; m.material.depthWrite = target >= 1; m.material.needsUpdate = true;
+      }
+    }
   }
   if (flyTarget) {
     const d = flyTarget.clone().sub(controls.target).multiplyScalar(0.1);
