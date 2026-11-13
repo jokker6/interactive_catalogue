@@ -1,9 +1,10 @@
 <!doctype html>
-<html lang="et">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Detailikataloog</title>
+<title>Parts Catalog</title>
+<link rel="icon" href="data:,">
 <style>
   :root {
     --bg: #12151a;
@@ -58,6 +59,11 @@
     color: var(--muted); font-size: 18px; cursor: pointer; }
   #status { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
     color: var(--muted); text-align: center; z-index: 4; }
+  #warn { position: absolute; left: 14px; top: 14px; max-width: 460px; display: none; z-index: 7;
+    background: #3a1f1f; border: 1px solid #7a2e2e; color: #ffb4b4; border-radius: 8px;
+    padding: 10px 12px; font-size: 12px; }
+  #warn b { display: block; margin-bottom: 4px; }
+  #warn div { margin-top: 3px; word-break: break-word; }
   #hint { position: absolute; left: 14px; bottom: 12px; color: var(--muted); font-size: 12px;
     pointer-events: none; }
   @media (max-width: 800px) {
@@ -80,28 +86,29 @@
 <div id="app">
   <aside>
     <header>
-      <h1>Detailikataloog</h1>
-      <input id="search" type="search" placeholder="Otsi nime või tootekoodi järgi…">
+      <h1>Parts Catalog</h1>
+      <input id="search" type="search" placeholder="Search by name or part code…">
     </header>
     <div id="list"></div>
     <div class="controls">
       <div class="row">
-        <button data-mode="ghost" class="on">Läbipaistev</button>
-        <button data-mode="solid">Tahke</button>
-        <button data-mode="hide">Peida kere</button>
+        <button data-mode="ghost" class="on">Ghost</button>
+        <button data-mode="solid">Solid</button>
+        <button data-mode="hide">Hide body</button>
       </div>
       <div class="row">
-        <label for="opacity">Läbipaistvus</label>
+        <label for="opacity">Opacity</label>
         <input id="opacity" type="range" min="0.05" max="0.8" step="0.01" value="0.25">
       </div>
-      <div class="row"><button id="reset">Lähtesta vaade</button></div>
+      <div class="row"><button id="reset">Reset view</button></div>
     </div>
   </aside>
   <main id="view">
-    <div id="status">Laen kere…</div>
+    <div id="status">Loading body…</div>
+    <div id="warn"></div>
     <div id="tip"></div>
     <div id="card"></div>
-    <div id="hint">Vasak hiir: pööra · Parem hiir: liiguta · Ratas: suumi · Kliki detaili: info</div>
+    <div id="hint">Left mouse: rotate · Right mouse: pan · Wheel: zoom · Click a part: details</div>
   </main>
 </div>
 
@@ -150,7 +157,7 @@ draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
 const loader = new GLTFLoader();
 loader.setDRACOLoader(draco);
 
-// ---------- Kere ----------
+// ---------- Body ----------
 let body = null;
 let bodyMode = 'ghost';
 const bodyMats = [];
@@ -182,7 +189,7 @@ async function loadBody() {
       });
       o.material = m;
       bodyMats.push(m);
-      o.raycast = () => {};           // kere ei võta hiirt, detailid on alati klikitavad
+      o.raycast = () => {};           // body never takes the mouse, parts are always clickable
     }
   });
   scene.add(body);
@@ -201,7 +208,7 @@ async function loadBody() {
   applyBodyMode();
 }
 
-// ---------- Detailid ----------
+// ---------- Parts ----------
 const parts = [];        // { def, pivot, meshes }
 const partMeshes = [];   // raycasti jaoks
 let hovered = null;
@@ -219,7 +226,7 @@ function makePivot(obj) {
 }
 
 function demoObject(def) {
-  // Kohatäide: kuju kere piirdekasti murdosade järgi (kuni päris CAD-fail on olemas)
+  // Placeholder shape placed by fractions of the body bounding box (until a real CAD file exists)
   const d = def.demo;
   const size = sceneBox.getSize(new THREE.Vector3());
   const min = sceneBox.min;
@@ -235,7 +242,7 @@ function demoObject(def) {
   return g;
 }
 
-// ---------- STEP (OpenCascade WebAssembly, laetakse ainult vajadusel) ----------
+// ---------- STEP (OpenCascade WebAssembly, loaded only when needed) ----------
 const OCCT_BASE = 'https://cdn.jsdelivr.net/npm/occt-import-js@0.0.23/dist/';
 let occtPromise = null;
 function getOcct() {
@@ -243,7 +250,7 @@ function getOcct() {
     const s = document.createElement('script');
     s.src = OCCT_BASE + 'occt-import-js.js';
     s.onload = () => window.occtimportjs({ locateFile: n => OCCT_BASE + n }).then(resolve, reject);
-    s.onerror = () => reject(new Error('STEP-lugeja (occt-import-js) laadimine ebaõnnestus'));
+    s.onerror = () => reject(new Error('Failed to load the STEP reader (occt-import-js)'));
     document.head.appendChild(s);
   });
   return occtPromise;
@@ -255,7 +262,7 @@ async function loadStep(url, def) {
     fetch(url).then(r => { if (!r.ok) throw new Error(url + ' (' + r.status + ')'); return r.arrayBuffer(); })
   ]);
   const res = occt.ReadStepFile(new Uint8Array(buf), null);
-  if (!res.success) throw new Error('STEP lugemine ebaõnnestus: ' + url);
+  if (!res.success) throw new Error('Could not read STEP file: ' + url);
   const group = new THREE.Group();
   for (const m of res.meshes) {
     const geo = new THREE.BufferGeometry();
@@ -268,26 +275,35 @@ async function loadStep(url, def) {
       color, metalness: 0.3, roughness: 0.5, side: THREE.DoubleSide
     })));
   }
-  // STEP on tavaliselt Z-üles, Blenderi glTF eksport (kere) on Y-üles: pööra sama moodi.
-  // Kui detail satub külili, pane parts.json-i "zUp": false.
+  // STEP is usually Z-up, the Blender glTF export (body) is Y-up: rotate the same way.
+  // If a part ends up on its side, set "zUp": false in parts.json.
   if (def.zUp !== false) group.rotation.x = -Math.PI / 2;
   return group;
 }
 
+const failed = [];
+
 async function loadParts() {
-  const res = await fetch(PARTS_URL);
-  const data = await res.json();
+  const res = await fetch(PARTS_URL, { cache: 'no-cache' });
+  if (!res.ok) throw new Error('parts.json not found (' + res.status + ')');
+  let data;
+  try { data = await res.json(); }
+  catch (e) { throw new Error('parts.json is not valid JSON (' + e.message + '). Check commas and quotes.'); }
+  if (!data || !Array.isArray(data.parts)) throw new Error('parts.json must contain a "parts" list');
+
   for (const def of data.parts) {
+    const label = (def.name || def.id || '(unnamed)') + (def.file ? ' [' + def.file + ']' : '');
     let obj;
     try {
       if (def.file && /\.(step|stp)$/i.test(def.file)) obj = await loadStep(def.file, def);
       else if (def.file) obj = (await loader.loadAsync(def.file)).scene;
       else if (def.demo) obj = demoObject(def);
-      else continue;
+      else { failed.push(label + ': needs a "file" (or "demo") entry'); continue; }
       if (def.scale) obj.scale.multiplyScalar(def.scale);
       if (def.position) obj.position.add(new THREE.Vector3(...def.position));
     } catch (e) {
-      console.warn('Detaili laadimine ebaõnnestus:', def.id, e);
+      console.warn('Failed to load part:', def.id, e);
+      failed.push(label + ': ' + (e && e.message ? e.message : e));
       if (def.demo) obj = demoObject(def); else continue;
     }
     const meshes = [];
@@ -302,6 +318,7 @@ async function loadParts() {
       o.material = m;
       meshes.push(o);
     });
+    if (!meshes.length) { failed.push(label + ': file contains no geometry'); continue; }
     const pivot = makePivot(obj);
     const rec = { def, pivot, meshes };
     meshes.forEach(m => { m.userData.part = rec; partMeshes.push(m); });
@@ -309,7 +326,18 @@ async function loadParts() {
   }
 }
 
-// ---------- Esiletõstmine ----------
+function showWarnings() {
+  const el = document.getElementById('warn');
+  if (!failed.length) return;
+  el.innerHTML = '';
+  const b = document.createElement('b');
+  b.textContent = failed.length + ' part(s) could not be shown:';
+  el.append(b);
+  failed.forEach(f => { const d = document.createElement('div'); d.textContent = f; el.append(d); });
+  el.style.display = 'block';
+}
+
+// ---------- Highlight ----------
 function refreshHighlight() {
   for (const r of parts) {
     const on = r === hovered || r === selected;
@@ -341,7 +369,7 @@ function setHover(rec, evt) {
   renderer.domElement.style.cursor = rec ? 'pointer' : 'default';
 }
 
-// ---------- Info kaart ----------
+// ---------- Info card ----------
 function showCard(rec) {
   cardEl.innerHTML = '';
   if (!rec) { cardEl.style.display = 'none'; return; }
@@ -377,7 +405,7 @@ function select(rec, fly) {
   if (rec && fly) flyTarget = rec.pivot.position.clone();
 }
 
-// ---------- Hiir ----------
+// ---------- Mouse ----------
 const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 let down = null;
@@ -403,11 +431,11 @@ renderer.domElement.addEventListener('pointerup', e => {
   if (moved < 5) select(pick(e));
 });
 
-// ---------- Külgpaneel ----------
+// ---------- Sidebar ----------
 function buildList() {
   listEl.innerHTML = '';
   const groups = {};
-  for (const r of parts) (groups[r.def.category || 'Muu'] ||= []).push(r);
+  for (const r of parts) (groups[r.def.category || 'Other'] ||= []).push(r);
   for (const [cat, items] of Object.entries(groups)) {
     const h = document.createElement('div'); h.className = 'cat'; h.textContent = cat;
     listEl.append(h);
@@ -445,7 +473,7 @@ document.getElementById('reset').addEventListener('click', () => {
   camera.position.copy(home.pos); controls.target.copy(home.target); select(null);
 });
 
-// ---------- Tsükkel ----------
+// ---------- Render loop ----------
 function animate() {
   requestAnimationFrame(animate);
   for (const r of parts) {
@@ -465,16 +493,19 @@ function animate() {
 
 // ---------- Start ----------
 (async () => {
+  let stage = 'body';
   try {
     await loadBody();
-    statusEl.textContent = 'Laen detaile…';
+    stage = 'parts';
+    statusEl.textContent = 'Loading parts…';
     await loadParts();
     buildList();
+    showWarnings();
     statusEl.style.display = 'none';
   } catch (e) {
     console.error(e);
-    statusEl.textContent = 'Laadimine ebaõnnestus: ' + e.message +
-      '. Kontrolli, et scan.glb ja parts.json on olemas ning leht avatakse serverist (mitte file://).';
+    statusEl.textContent = 'Loading failed: ' + e.message +
+      (stage === 'body' ? ' (scan.glb must be in the same folder as index.html)' : '');
   }
   animate();
 })();

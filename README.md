@@ -1,72 +1,68 @@
-# Detailikataloog (prototüüp)
+# Parts Catalog (prototype)
 
-Staatiline leht: 3D-kere keskel, detailid kataloogina küljel. Hiirega detaili peale minnes see suureneb ja kõrvale tuleb nimi, klõps avab info.
+A static page: the scanned body in the middle, the parts catalog on the side. Hovering a part enlarges it and shows its name, clicking opens its details. STEP files are read directly in the browser, no conversion needed.
 
-## Failid
-
-```
-index.html      leht ise (Three.js tuleb CDN-ist)
-parts.json      detailide kataloog (nimi, tootekood, kategooria, info)
-scan.glb        lihtsustatud kere (sinu Blenderi eksport)
-parts/          detailide .glb failid (valikuline, vt allpool)
-```
-
-## Avaldamine GitHub Pagesis
-
-1. Tee GitHubis uus repo (nt `katalog`).
-2. Lae repo juurkausta üles `index.html`, `parts.json` ja `scan.glb` (vajadusel kaust `parts/`).
-3. Repo **Settings → Pages → Build and deployment**: Source = *Deploy from a branch*, Branch = `main`, kaust `/ (root)`.
-4. Mõne minuti pärast on leht aadressil `https://KASUTAJA.github.io/katalog/`.
-
-GitHubi limiit on 100 MB faili kohta, seega kere GLB peab olema sellest väiksem (Draco tihendusega on).
-
-## Kohalik test
-
-Lehte ei saa avada topeltklõpsuga (`file://`), vaja on lihtsat serverit. Kaustas:
+## Files
 
 ```
-python3 -m http.server 8000
+index.html      the page (Three.js and the STEP reader load from a CDN)
+parts.json      the catalog: one entry per part
+scan.glb        the simplified body scan (Blender export)
+parts/          STEP (or GLB) files of the parts
 ```
 
-ja ava `http://localhost:8000`.
+## Publishing (GitHub Pages)
 
-## Päris detaili lisamine
+1. Upload `index.html`, `parts.json`, `scan.glb` and the `parts/` folder to the repository root.
+2. **Settings -> Pages**: Source = *Deploy from a branch*, Branch = `main`, folder `/ (root)`.
+3. After a few minutes the page is at `https://USERNAME.github.io/REPOSITORY/`.
 
-1. Blenderis impordi detail samasse stseeni kere kõrvale, nii et see on õiges kohas. Ära liiguta kere.
-2. Vali ainult see detail ja ekspordi **glTF Binary (.glb)**, märgi **Limit to → Selected Objects**.
-3. Pane fail kausta `parts/` (nt `parts/K6-0001.glb`).
-4. Lisa `parts.json`-is detaili kirjesse `"file": "parts/K6-0001.glb"` ja eemalda `"demo"` rida.
+Pages is public, and a private repository needs a paid GitHub plan to use it.
 
-Detail jääb sinna, kuhu Blenderis jäi, sest glTF säilitab asukoha.
+## Adding a part
 
-## STEP failide näitamine otse
+The page only shows parts that are listed in `parts.json`. It does not scan the `parts/` folder. So adding a part is always two steps:
 
-Lehel on STEP-i lugeja sees (OpenCascade WebAssembly, laetakse alles siis, kui mõni detail on STEP). GLB-d pole vaja teha.
+1. Upload the STEP file to `parts/` (for example `parts/K6-0001.step`).
+2. Add an entry for it to `parts.json`:
 
-1. Pane STEP-fail kausta `parts/` (nt `parts/K6-0001.step`).
-2. Lisa `parts.json`-is kirjesse `"file": "parts/K6-0001.step"` ja eemalda `"demo"` rida.
+```json
+{
+  "id": "k6-0001",
+  "name": "Front bumper",
+  "code": "K6-0001",
+  "category": "Body front",
+  "description": "Short description.",
+  "info": { "Material": "Steel", "Price": "120 EUR" },
+  "file": "parts/K6-0001.step"
+}
+```
 
-Detail jääb sinna, kuhu ta STEP-failis on. Seega ekspordi Fusionist detail samast koordinaatsüsteemist, kus kere scan on.
+Remember the comma between entries. File names are case-sensitive on GitHub Pages (`K6-0001.STEP` is not `K6-0001.step`).
 
-Lisaväljad, kui detail ei istu kere peal:
+If a part cannot be shown, the page lists it in a red box in the top-left corner with the reason (file not found, invalid file, and so on). After uploading, wait a minute or two for Pages to update and refresh with Ctrl+F5.
 
-| Väli | Tähendus |
+A part stays where it is in its file, so export parts from the same coordinate system and in millimetres, like the body scan.
+
+If a part does not sit right on the body:
+
+| Field | Meaning |
 |---|---|
-| `zUp` | `false`, kui detail tuleb külili (vaikimisi eeldab Z-üles STEP-i) |
-| `scale` | skaala (nt `0.001`, kui ühikud on valed) |
-| `position` | nihe `[x, y, z]` kere ühikutes |
+| `zUp` | `false` if a STEP part comes out lying on its side (the default assumes Z-up) |
+| `scale` | scale factor (for example `0.001` if the units are wrong) |
+| `position` | offset `[x, y, z]` in body units |
 
-Märkused: STEP-i teisendus brauseris võtab detaili kohta sekundeid ja laadib kõik detailid kohe lehe avamisel, seega sobib see mõne kümne detaili jaoks. Suurema kataloogi puhul tasub detailid hiljem GLB-ks konverteerida.
+STEP files are converted in the browser when the page opens, which takes a few seconds per part. That is fine for a few dozen parts; for a larger catalog, convert parts to GLB beforehand.
 
-## parts.json väljad
+## parts.json fields
 
-| Väli | Tähendus |
+| Field | Meaning |
 |---|---|
-| `id` | unikaalne tunnus |
-| `name` | nimi, mis tuleb hiirega üle sõites |
-| `code` | tootekood |
-| `category` | grupp külgpaneelis |
-| `description` | kirjeldus info kaardil |
-| `info` | suvalised nimi-väärtus paarid (materjal, hind jne) |
-| `file` | detaili .glb tee |
-| `demo` | ajutine kohatäide kere mõõtude järgi (kuni `file` on olemas) |
+| `id` | unique identifier |
+| `name` | name shown on hover |
+| `code` | part code |
+| `category` | group in the sidebar |
+| `description` | text on the info card |
+| `info` | any name/value pairs (material, price, ...) |
+| `file` | path to the part's .step or .glb |
+| `demo` | temporary placeholder shape (used until `file` exists) |

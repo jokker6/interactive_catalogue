@@ -1,30 +1,30 @@
 {
   "parts": [
     {
-      "id": "demo-esiosa",
-      "name": "Esiosa detail (demo)",
+      "id": "demo-front",
+      "name": "Front section part (demo)",
       "code": "K6-0001",
-      "category": "Kere esiosa",
-      "description": "Kohatäide, mis on paigutatud kere piirdekasti järgi. Asenda päris CAD-detaili failiga, lisades siia rea \"file\": \"parts/K6-0001.glb\".",
-      "info": { "Materjal": "Teras", "Seisund": "Uus", "Hind": "—" },
+      "category": "Body front",
+      "description": "Placeholder positioned by the body's bounding box. Replace it with a real CAD part by adding a line like \"file\": \"parts/K6-0001.step\" and removing the \"demo\" line.",
+      "info": { "Material": "Steel", "Condition": "New", "Price": "-" },
       "demo": { "shape": "box", "anchor": [0.5, 0.35, 0.92], "sizeFrac": [0.45, 0.12, 0.08] }
     },
     {
-      "id": "demo-tagaosa",
-      "name": "Tagaosa detail (demo)",
+      "id": "demo-rear",
+      "name": "Rear section part (demo)",
       "code": "K6-0002",
-      "category": "Kere tagaosa",
-      "description": "Teine kohatäide. Kui kere pikitelg on teine kui eeldatud, muuda anchor ja sizeFrac väärtusi (x, y, z).",
-      "info": { "Materjal": "Alumiinium", "Seisund": "Kasutatud", "Hind": "—" },
+      "category": "Body rear",
+      "description": "Second placeholder. If the body's long axis is different from what was assumed, change the anchor and sizeFrac values (x, y, z).",
+      "info": { "Material": "Aluminium", "Condition": "Used", "Price": "-" },
       "demo": { "shape": "box", "anchor": [0.5, 0.35, 0.08], "sizeFrac": [0.45, 0.12, 0.08] }
     },
     {
-      "id": "demo-katus",
-      "name": "Katuse detail (demo)",
+      "id": "demo-roof",
+      "name": "Roof part (demo)",
       "code": "K6-0003",
-      "category": "Kere ülaosa",
-      "description": "Kolmas kohatäide, et näha kataloogi gruppe ja otsingut.",
-      "info": { "Materjal": "Teras", "Seisund": "Uus", "Hind": "—" },
+      "category": "Body top",
+      "description": "Third placeholder, to show catalog groups and search.",
+      "info": { "Material": "Steel", "Condition": "New", "Price": "-" },
       "demo": { "shape": "sphere", "anchor": [0.5, 0.85, 0.5], "sizeFrac": [0.12, 0.12, 0.12] }
     }
   ]
