@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catalog encryption tool</title>
+<style>
+  :root { --bg:#12151a; --panel:#1a1f27; --line:#2a313c; --text:#e6e9ee; --muted:#8b94a3; --accent:#f59e0b; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; padding:24px; }
+  main { max-width:640px; margin:0 auto; background:var(--panel); border:1px solid var(--line);
+    border-radius:12px; padding:24px; display:grid; gap:14px; }
+  h1 { margin:0; font-size:20px; }
+  p { margin:0; color:var(--muted); }
+  label { display:block; margin-bottom:4px; font-weight:600; }
+  input[type=password], input[type=text] { width:100%; padding:10px 12px; border-radius:6px;
+    border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:15px; }
+  input[type=file] { color:var(--muted); }
+  button { padding:11px; border-radius:6px; border:0; background:var(--accent); color:#1a1205;
+    font-weight:600; font-size:15px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  .row { display:flex; gap:8px; align-items:center; color:var(--muted); }
+  #files { font-size:13px; color:var(--muted); white-space:pre-wrap; background:var(--bg);
+    border:1px solid var(--line); border-radius:6px; padding:10px; max-height:220px; overflow:auto; display:none; }
+  #msg { min-height:20px; }
+  .warn { color:#ffcf8a; } .err { color:#ffb4b4; } .ok { color:#9be3a8; }
+  code { background:var(--bg); padding:1px 5px; border-radius:4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Catalog encryption tool</h1>
+  <p>Encrypts the catalog data files with a password. Everything happens in this browser tab, your files are not uploaded anywhere. Use the same password for every run, the catalog page asks for it when it opens.</p>
+
+  <div>
+    <label for="pw">Password</label>
+    <input id="pw" type="password" autocomplete="off">
+    <div class="row"><input type="checkbox" id="show"><label for="show" style="margin:0;font-weight:400">Show password</label></div>
+    <div id="strength" class="warn"></div>
+  </div>
+
+  <div>
+    <label for="dir">Catalog folder</label>
+    <input id="dir" type="file" webkitdirectory multiple>
+    <p style="margin-top:6px">Pick the folder that contains <code>scan.glb</code>, <code>parts.json</code> and the <code>parts</code> folder (and optionally an <code>images</code> folder).</p>
+  </div>
+
+  <div id="files"></div>
+  <button id="go" disabled>Encrypt and download ZIP</button>
+  <div id="msg"></div>
+  <p>Upload the contents of the ZIP (the <code>.enc</code> files) to your website repository, together with <code>index.html</code>. Do not upload the original, unencrypted files.</p>
+</main>
+
+<script>
+const enc = new TextEncoder();
+const MAGIC = [0x49, 0x43, 0x45, 0x31];   // "ICE1"
+const ITER = 600000;
+const pw = document.getElementById('pw');
+const dir = document.getElementById('dir');
+const go = document.getElementById('go');
+const msg = document.getElementById('msg');
+const filesEl = document.getElementById('files');
+let picked = [];   // { path, file }
+
+document.getElementById('show').onchange = e => { pw.type = e.target.checked ? 'text' : 'password'; };
+
+function say(text, cls) { msg.textContent = text; msg.className = cls || ''; }
+function refresh() {
+  const n = pw.value.length;
+  document.getElementById('strength').textContent =
+    n && n < 12 ? 'Short password: fine for testing, but for real use choose a long phrase (12+ characters), because encrypted files can be downloaded and guessed offline.' : '';
+  go.disabled = !(n > 0 && picked.length > 0 && picked.some(p => p.path === 'parts.json') && picked.some(p => p.path === 'scan.glb'));
+}
+pw.addEventListener('input', refresh);
+
+dir.addEventListener('change', () => {
+  picked = [];
+  for (const f of dir.files) {
+    const parts = f.webkitRelativePath.split('/');
+    const path = parts.slice(1).join('/');
+    if (!path || path.split('/').some(seg => seg.startsWith('.'))) continue;
+    if (path === 'scan.glb' || path === 'parts.json' || path.startsWith('parts/') || path.startsWith('images/')) {
+      picked.push({ path, file: f });
+    }
+  }
+  picked.sort((a, b) => a.path.localeCompare(b.path));
+  const mb = n => (n / 1048576).toFixed(1) + ' MB';
+  filesEl.style.display = picked.length ? 'block' : 'none';
+  filesEl.textContent = picked.map(p => p.path + '  (' + mb(p.file.size) + ')').join('\n');
+  const miss = ['scan.glb', 'parts.json'].filter(n => !picked.some(p => p.path === n));
+  if (!picked.length) say('No catalog files found in that folder.', 'err');
+  else if (miss.length) say('Missing in the folder: ' + miss.join(', '), 'err');
+  else say(picked.length + ' file(s) will be encrypted.', 'ok');
+  refresh();
+});
+
+// ---------- ZIP writer (stored, no compression) ----------
+const crcTable = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+  return t;
+})();
+function crc32(buf) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) c = crcTable[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function makeZip(entries) {
+  const chunks = [], central = [];
+  let offset = 0;
+  for (const e of entries) {
+    const name = enc.encode(e.name), crc = crc32(e.data), size = e.data.length;
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+    lh.setUint16(8, 0, true); lh.setUint16(10, 0, true); lh.setUint16(12, 0x21, true);
+    lh.setUint32(14, crc, true); lh.setUint32(18, size, true); lh.setUint32(22, size, true);
+    lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+    chunks.push(new Uint8Array(lh.buffer), name, e.data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true);
+    ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true); ch.setUint16(12, 0, true); ch.setUint16(14, 0x21, true);
+    ch.setUint32(16, crc, true); ch.setUint32(20, size, true); ch.setUint32(24, size, true);
+    ch.setUint16(28, name.length, true); ch.setUint16(30, 0, true); ch.setUint16(32, 0, true);
+    ch.setUint16(34, 0, true); ch.setUint16(36, 0, true); ch.setUint32(38, 0, true); ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), name);
+    offset += 30 + name.length + size;
+  }
+  const cdSize = central.reduce((s, c) => s + c.length, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, entries.length, true); end.setUint16(10, entries.length, true);
+  end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+  return new Blob([...chunks, ...central, new Uint8Array(end.buffer)], { type: 'application/zip' });
+}
+
+// ---------- Encryption ----------
+go.addEventListener('click', async () => {
+  go.disabled = true;
+  try {
+    say('Deriving key…');
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const base = await crypto.subtle.importKey('raw', enc.encode(pw.value), 'PBKDF2', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: ITER, hash: 'SHA-256' },
+      base, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+    const entries = [];
+    let i = 0;
+    for (const p of picked) {
+      say('Encrypting ' + (++i) + ' / ' + picked.length + ': ' + p.path);
+      const plain = await p.file.arrayBuffer();
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plain));
+      const out = new Uint8Array(4 + 16 + 12 + ct.length);
+      out.set(MAGIC, 0); out.set(salt, 4); out.set(iv, 20); out.set(ct, 32);
+      entries.push({ name: p.path + '.enc', data: out });
+    }
+    say('Building ZIP…');
+    const blob = makeZip(entries);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'encrypted-catalog.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+    say('Done: encrypted-catalog.zip downloaded (' + entries.length + ' files).', 'ok');
+  } catch (e) {
+    console.error(e);
+    say('Failed: ' + e.message, 'err');
+  } finally {
+    refresh();
+  }
+});
+</script>
+</body>
+</html>

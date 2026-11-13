@@ -64,6 +64,20 @@
     padding: 10px 12px; font-size: 12px; }
   #warn b { display: block; margin-bottom: 4px; }
   #warn div { margin-top: 3px; word-break: break-word; }
+  #card .thumb { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: contain; margin-top: 12px;
+    border-radius: 8px; background: #1d232c; border: 1px solid var(--line); }
+  #gate { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: none;
+    align-items: center; justify-content: center; padding: 16px; }
+  #gate-form { width: 100%; max-width: 340px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 22px; display: grid; gap: 10px; }
+  #gate-form h2 { margin: 0; font-size: 18px; }
+  #gate-form p { margin: 0 0 4px; color: var(--muted); }
+  #gate-form input { padding: 10px 12px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); font-size: 15px; }
+  #gate-form button { padding: 10px; border-radius: 6px; border: 0; background: var(--accent);
+    color: #1a1205; font-weight: 600; font-size: 15px; cursor: pointer; }
+  #gate-form button:disabled { opacity: .6; cursor: default; }
+  #gate-msg { min-height: 18px; color: #ffb4b4; font-size: 13px; }
   #hint { position: absolute; left: 14px; bottom: 12px; color: var(--muted); font-size: 12px;
     pointer-events: none; }
   @media (max-width: 800px) {
@@ -83,6 +97,15 @@
 </script>
 </head>
 <body>
+<div id="gate">
+  <form id="gate-form" autocomplete="off">
+    <h2>Parts Catalog</h2>
+    <p>Enter the password to open the catalog.</p>
+    <input id="gate-pw" type="password" placeholder="Password" autocomplete="current-password">
+    <button id="gate-btn" type="submit">Open</button>
+    <div id="gate-msg"></div>
+  </form>
+</div>
 <div id="app">
   <aside>
     <header>
@@ -121,13 +144,88 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 const SCAN_URL = 'scan.glb';
 const PARTS_URL = 'parts.json';
 
+// true: the page only reads encrypted files (scan.glb.enc, parts.json.enc, ...) and asks for a password.
+// false: reads plain files (only for testing on your own computer).
+const REQUIRE_PASSWORD = true;
+
+// ---------- Password / decryption (AES-GCM, key from PBKDF2) ----------
+const MAGIC = [0x49, 0x43, 0x45, 0x31];   // file header "ICE1"
+let password = '';
+const keyCache = new Map();
+const hex = u8 => Array.from(u8, b => b.toString(16).padStart(2, '0')).join('');
+
+function getKey(salt) {
+  const id = hex(salt);
+  if (!keyCache.has(id)) {
+    keyCache.set(id, (async () => {
+      const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+      return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations: 600000, hash: 'SHA-256' },
+        base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    })());
+  }
+  return keyCache.get(id);
+}
+
+// Returns the (decrypted) bytes of a data file as an ArrayBuffer.
+async function fetchData(path) {
+  const url = REQUIRE_PASSWORD ? path + '.enc' : path;
+  const r = await fetch(url, { cache: 'no-cache' });
+  if (!r.ok) throw new Error(url + ' (' + r.status + ')');
+  const raw = await r.arrayBuffer();
+  if (!REQUIRE_PASSWORD) return raw;
+  const u8 = new Uint8Array(raw);
+  if (u8.length < 4 + 16 + 12 + 16 || MAGIC.some((b, i) => u8[i] !== b)) {
+    throw new Error(url + ' is not a valid encrypted file');
+  }
+  const salt = u8.slice(4, 20), iv = u8.slice(20, 32), ct = u8.slice(32);
+  const key = await getKey(salt);
+  try {
+    return await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+  } catch (e) {
+    const err = new Error('Wrong password');
+    err.wrongPassword = true;
+    throw err;
+  }
+}
+
+function unlock() {
+  const gate = document.getElementById('gate');
+  const form = document.getElementById('gate-form');
+  const input = document.getElementById('gate-pw');
+  const msg = document.getElementById('gate-msg');
+  const btn = document.getElementById('gate-btn');
+  gate.style.display = 'flex';
+  input.focus();
+  return new Promise(resolve => {
+    form.addEventListener('submit', async ev => {
+      ev.preventDefault();
+      if (!input.value || btn.disabled) return;
+      btn.disabled = true;
+      msg.textContent = 'Checking…';
+      password = input.value;
+      keyCache.clear();
+      try {
+        await fetchData(PARTS_URL);          // wrong password fails here
+        input.value = '';
+        gate.style.display = 'none';
+        resolve();
+      } catch (e) {
+        msg.textContent = e.wrongPassword ? 'Wrong password' : 'Could not open the catalog: ' + e.message;
+        btn.disabled = false;
+        input.select();
+      }
+    });
+  });
+}
+
 const view = document.getElementById('view');
 const statusEl = document.getElementById('status');
 const tipEl = document.getElementById('tip');
 const cardEl = document.getElementById('card');
 const listEl = document.getElementById('list');
 
-// ---------- Stseen ----------
+// ---------- Scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 view.appendChild(renderer.domElement);
@@ -156,6 +254,7 @@ const draco = new DRACOLoader();
 draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
 const loader = new GLTFLoader();
 loader.setDRACOLoader(draco);
+const parseGlb = buf => new Promise((resolve, reject) => loader.parse(buf, '', resolve, reject));
 
 // ---------- Body ----------
 let body = null;
@@ -180,7 +279,7 @@ function applyBodyMode() {
 }
 
 async function loadBody() {
-  const gltf = await loader.loadAsync(SCAN_URL);
+  const gltf = await parseGlb(await fetchData(SCAN_URL));
   body = gltf.scene;
   body.traverse(o => {
     if (o.isMesh) {
@@ -257,10 +356,7 @@ function getOcct() {
 }
 
 async function loadStep(url, def) {
-  const [occt, buf] = await Promise.all([
-    getOcct(),
-    fetch(url).then(r => { if (!r.ok) throw new Error(url + ' (' + r.status + ')'); return r.arrayBuffer(); })
-  ]);
+  const [occt, buf] = await Promise.all([getOcct(), fetchData(url)]);
   const res = occt.ReadStepFile(new Uint8Array(buf), null);
   if (!res.success) throw new Error('Could not read STEP file: ' + url);
   const group = new THREE.Group();
@@ -284,10 +380,9 @@ async function loadStep(url, def) {
 const failed = [];
 
 async function loadParts() {
-  const res = await fetch(PARTS_URL, { cache: 'no-cache' });
-  if (!res.ok) throw new Error('parts.json not found (' + res.status + ')');
+  const raw = await fetchData(PARTS_URL);
   let data;
-  try { data = await res.json(); }
+  try { data = JSON.parse(new TextDecoder().decode(raw)); }
   catch (e) { throw new Error('parts.json is not valid JSON (' + e.message + '). Check commas and quotes.'); }
   if (!data || !Array.isArray(data.parts)) throw new Error('parts.json must contain a "parts" list');
 
@@ -296,7 +391,7 @@ async function loadParts() {
     let obj;
     try {
       if (def.file && /\.(step|stp)$/i.test(def.file)) obj = await loadStep(def.file, def);
-      else if (def.file) obj = (await loader.loadAsync(def.file)).scene;
+      else if (def.file) obj = (await parseGlb(await fetchData(def.file))).scene;
       else if (def.demo) obj = demoObject(def);
       else { failed.push(label + ': needs a "file" (or "demo") entry'); continue; }
       if (def.scale) obj.scale.multiplyScalar(def.scale);
@@ -378,15 +473,19 @@ function showCard(rec) {
   close.className = 'close'; close.textContent = '×';
   close.onclick = () => select(null);
   const h = document.createElement('h2'); h.textContent = d.name;
-  const code = document.createElement('div'); code.className = 'code'; code.textContent = d.code || '';
   const cat = document.createElement('div'); cat.className = 'cat2'; cat.textContent = d.category || '';
-  cardEl.append(close, h, code, cat);
+  cardEl.append(close, h, cat);
   if (d.description) {
     const p = document.createElement('p'); p.textContent = d.description; cardEl.append(p);
   }
-  if (d.info && Object.keys(d.info).length) {
+  const rows = [];
+  if (d.code) rows.push(['Part code', d.code]);
+  for (const [k, v] of Object.entries(d.info || {})) {
+    if (k.toLowerCase() !== 'part code') rows.push([k, v]);
+  }
+  if (rows.length) {
     const t = document.createElement('table');
-    for (const [k, v] of Object.entries(d.info)) {
+    for (const [k, v] of rows) {
       const tr = document.createElement('tr');
       const a = document.createElement('td'); a.textContent = k;
       const b = document.createElement('td'); b.textContent = v;
@@ -394,7 +493,61 @@ function showCard(rec) {
     }
     cardEl.append(t);
   }
+  const img = document.createElement('img');
+  img.className = 'thumb'; img.alt = d.name;
+  cardEl.append(img);
+  getPartImage(rec).then(u => { if (selected === rec) img.src = u; });
   cardEl.style.display = 'block';
+}
+
+// Picture of a part: a file given as "image" in parts.json, otherwise a render of the 3D part itself.
+function makeThumb(rec, size = 480) {
+  const hidden = [];
+  scene.children.forEach(c => {
+    if (c !== rec.pivot && !c.isLight && c.visible) { hidden.push(c); c.visible = false; }
+  });
+  const prevScale = rec.pivot.scale.x;
+  rec.pivot.scale.setScalar(1);
+  rec.pivot.updateMatrixWorld(true);
+  const emissive = rec.meshes.map(m => m.material.emissive.getHex());
+  rec.meshes.forEach(m => m.material.emissive.setHex(0));
+  const sphere = new THREE.Box3().setFromObject(rec.pivot).getBoundingSphere(new THREE.Sphere());
+  const cam = new THREE.PerspectiveCamera(35, 1, sphere.radius / 50, sphere.radius * 50);
+  const dist = (sphere.radius / Math.sin(THREE.MathUtils.degToRad(17.5))) * 1.05;
+  cam.position.copy(sphere.center).add(new THREE.Vector3(1, 0.65, 1.1).normalize().multiplyScalar(dist));
+  cam.lookAt(sphere.center);
+  const prevBg = scene.background;
+  const prevRatio = renderer.getPixelRatio();
+  scene.background = new THREE.Color(0x1d232c);
+  renderer.setPixelRatio(1);
+  renderer.setSize(size, size, false);
+  renderer.render(scene, cam);
+  const url = renderer.domElement.toDataURL('image/png');
+  renderer.setPixelRatio(prevRatio);
+  resize();
+  scene.background = prevBg;
+  hidden.forEach(c => { c.visible = true; });
+  rec.pivot.scale.setScalar(prevScale);
+  rec.meshes.forEach((m, i) => m.material.emissive.setHex(emissive[i]));
+  renderer.render(scene, camera);
+  return url;
+}
+
+const IMAGE_TYPES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', svg: 'image/svg+xml' };
+async function getPartImage(rec) {
+  if (rec.imageUrl) return rec.imageUrl;
+  if (rec.def.image) {
+    try {
+      const buf = await fetchData(rec.def.image);
+      const type = IMAGE_TYPES[rec.def.image.split('.').pop().toLowerCase()] || 'image/png';
+      rec.imageUrl = URL.createObjectURL(new Blob([buf], { type }));
+      return rec.imageUrl;
+    } catch (e) {
+      console.warn('Could not load image for', rec.def.id, e);
+    }
+  }
+  rec.imageUrl = makeThumb(rec);
+  return rec.imageUrl;
 }
 
 let flyTarget = null;
@@ -495,6 +648,12 @@ function animate() {
 (async () => {
   let stage = 'body';
   try {
+    if (REQUIRE_PASSWORD) {
+      if (!(window.crypto && crypto.subtle)) throw new Error('this page must be opened over https');
+      stage = 'gate';
+      await unlock();
+      stage = 'body';
+    }
     await loadBody();
     stage = 'parts';
     statusEl.textContent = 'Loading parts…';

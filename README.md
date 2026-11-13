@@ -1,58 +1,67 @@
-# Parts Catalog (prototype)
+# Parts Catalog (password protected)
 
-A static page: the scanned body in the middle, the parts catalog on the side. Hovering a part enlarges it and shows its name, clicking opens its details. STEP files are read directly in the browser, no conversion needed.
+A static page: the scanned body in the middle, the parts catalog on the side. Hovering a part enlarges it and shows its name, clicking opens its details (part code, info and a picture of the part). STEP files are read directly in the browser.
+
+## How the password protection works
+
+The page itself (`index.html`) contains no data and no password. The body scan, the part list and all part files are stored **encrypted** (`*.enc`). When someone opens the page it asks for the password and decrypts the data in the browser. Without the password the files are unreadable, even if someone downloads them.
+
+You keep the original (unencrypted) files on your own computer or in Dropbox, and only upload the encrypted versions.
 
 ## Files
 
+Your working folder (not uploaded):
+
 ```
-index.html      the page (Three.js and the STEP reader load from a CDN)
+scan.glb        simplified body scan (Blender export)
 parts.json      the catalog: one entry per part
-scan.glb        the simplified body scan (Blender export)
-parts/          STEP (or GLB) files of the parts
+parts/          STEP files of the parts (bumper.step, fender.step, ...)
+images/         optional pictures of parts
+encrypt.html    the encryption tool (open it in a browser, keep it local)
 ```
 
-## Publishing (GitHub Pages)
+Uploaded to GitHub (repository root):
 
-1. Upload `index.html`, `parts.json`, `scan.glb` and the `parts/` folder to the repository root.
-2. **Settings -> Pages**: Source = *Deploy from a branch*, Branch = `main`, folder `/ (root)`.
-3. After a few minutes the page is at `https://USERNAME.github.io/REPOSITORY/`.
+```
+index.html
+scan.glb.enc
+parts.json.enc
+parts/bumper.step.enc, parts/fender.step.enc, ...
+images/...enc   (only if you use images)
+```
 
-Pages is public, and a private repository needs a paid GitHub plan to use it.
+## Updating the catalog
+
+1. Edit `parts.json` and/or add STEP files to `parts/` in your working folder.
+2. Open `encrypt.html` in a browser, enter the password, pick your working folder and press **Encrypt and download ZIP**.
+3. Unzip, and upload the `.enc` files to the repository (same folders, replacing the old ones).
+4. Wait a minute or two for GitHub Pages to update and refresh the page with Ctrl+F5.
+
+Use the same password every time. Never upload the unencrypted `scan.glb`, `parts.json` or `.step` files. If they were uploaded earlier, they stay readable in the repository's history, so the cleanest way is to create a new repository for the protected version and upload only the encrypted files there.
 
 ## Adding a part
 
-The page only shows parts that are listed in `parts.json`. It does not scan the `parts/` folder. So adding a part is always two steps:
-
-1. Upload the STEP file to `parts/` (for example `parts/K6-0001.step`).
-2. Add an entry for it to `parts.json`:
+The page only shows parts that are listed in `parts.json`; it does not scan the `parts/` folder. Add the STEP file to `parts/` and an entry to `parts.json`:
 
 ```json
 {
-  "id": "k6-0001",
+  "id": "k6-0007",
   "name": "Front bumper",
-  "code": "K6-0001",
-  "category": "Body front",
+  "code": "K6-0007",
+  "category": "Body",
   "description": "Short description.",
   "info": { "Material": "Steel", "Price": "120 EUR" },
-  "file": "parts/K6-0001.step"
+  "file": "parts/front_bumper.step"
 }
 ```
 
-Remember the comma between entries. File names are case-sensitive on GitHub Pages (`K6-0001.STEP` is not `K6-0001.step`).
-
-If a part cannot be shown, the page lists it in a red box in the top-left corner with the reason (file not found, invalid file, and so on). After uploading, wait a minute or two for Pages to update and refresh with Ctrl+F5.
+Remember the comma between entries. File names are case-sensitive on GitHub Pages. If a part cannot be shown, the page lists it in a red box in the top-left corner with the reason.
 
 A part stays where it is in its file, so export parts from the same coordinate system and in millimetres, like the body scan.
 
-If a part does not sit right on the body:
+## Part picture
 
-| Field | Meaning |
-|---|---|
-| `zUp` | `false` if a STEP part comes out lying on its side (the default assumes Z-up) |
-| `scale` | scale factor (for example `0.001` if the units are wrong) |
-| `position` | offset `[x, y, z]` in body units |
-
-STEP files are converted in the browser when the page opens, which takes a few seconds per part. That is fine for a few dozen parts; for a larger catalog, convert parts to GLB beforehand.
+When you click a part, a picture of it appears at the bottom of the info card. By default the page renders it from the 3D part itself. To use your own picture instead, add `"image": "images/bumper.png"` to the part's entry (and put the file in `images/`).
 
 ## parts.json fields
 
@@ -60,9 +69,20 @@ STEP files are converted in the browser when the page opens, which takes a few s
 |---|---|
 | `id` | unique identifier |
 | `name` | name shown on hover |
-| `code` | part code |
+| `code` | part code (shown as "Part code" in the info) |
 | `category` | group in the sidebar |
 | `description` | text on the info card |
 | `info` | any name/value pairs (material, price, ...) |
 | `file` | path to the part's .step or .glb |
-| `demo` | temporary placeholder shape (used until `file` exists) |
+| `image` | optional picture of the part |
+| `zUp` | `false` if a STEP part comes out lying on its side |
+| `scale` | scale factor (for example `0.001` if the units are wrong) |
+| `position` | offset `[x, y, z]` in body units |
+
+## Password strength
+
+The encrypted files are public, so someone could try to guess the password on their own computer. A short password is fine for testing, but for real use choose a long phrase of 12 or more characters.
+
+## Testing without a password
+
+In `index.html` the line `const REQUIRE_PASSWORD = true;` can be set to `false` to read the plain files directly (use it only on your own computer with a local server, never on the published page).

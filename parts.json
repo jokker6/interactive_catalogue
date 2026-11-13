@@ -3,20 +3,56 @@
     {
       "id": "bumper",
       "name": "Bumper",
-      "code": "BUMPER-001",
+      "code": "K6-0001",
       "category": "Body",
-      "description": "Front bumper.",
-      "info": { "Material": "Carbon" },
+      "description": "",
+      "info": { "Material": "-" },
       "file": "parts/bumper.step"
     },
     {
       "id": "fender",
       "name": "Fender",
-      "code": "FENDER-001",
+      "code": "K6-0002",
       "category": "Body",
-      "description": "Right front fender",
-      "info": { "Material": "Carbon" },
+      "description": "",
+      "info": { "Material": "-" },
       "file": "parts/fender.step"
+    },
+    {
+      "id": "right_cooler_bracket",
+      "name": "Right cooler bracket",
+      "code": "K6-0003",
+      "category": "Cooling",
+      "description": "",
+      "info": { "Material": "-" },
+      "file": "parts/right_cooler_bracket.step"
+    },
+    {
+      "id": "right_cooler_upper_bracket",
+      "name": "Right cooler upper bracket",
+      "code": "K6-0004",
+      "category": "Cooling",
+      "description": "",
+      "info": { "Material": "-" },
+      "file": "parts/right_cooler_upper_bracket.step"
+    },
+    {
+      "id": "right_cooler_with_fans",
+      "name": "Right cooler with fans",
+      "code": "K6-0005",
+      "category": "Cooling",
+      "description": "",
+      "info": { "Material": "-" },
+      "file": "parts/right_cooler_with_fans.step"
+    },
+    {
+      "id": "right_duct",
+      "name": "Right duct",
+      "code": "K6-0006",
+      "category": "Cooling",
+      "description": "",
+      "info": { "Material": "-" },
+      "file": "parts/right_duct.step"
     }
   ]
 }
