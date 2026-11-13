@@ -1,0 +1,31 @@
+{
+  "parts": [
+    {
+      "id": "demo-esiosa",
+      "name": "Esiosa detail (demo)",
+      "code": "K6-0001",
+      "category": "Kere esiosa",
+      "description": "Kohatäide, mis on paigutatud kere piirdekasti järgi. Asenda päris CAD-detaili failiga, lisades siia rea \"file\": \"parts/K6-0001.glb\".",
+      "info": { "Materjal": "Teras", "Seisund": "Uus", "Hind": "—" },
+      "demo": { "shape": "box", "anchor": [0.5, 0.35, 0.92], "sizeFrac": [0.45, 0.12, 0.08] }
+    },
+    {
+      "id": "demo-tagaosa",
+      "name": "Tagaosa detail (demo)",
+      "code": "K6-0002",
+      "category": "Kere tagaosa",
+      "description": "Teine kohatäide. Kui kere pikitelg on teine kui eeldatud, muuda anchor ja sizeFrac väärtusi (x, y, z).",
+      "info": { "Materjal": "Alumiinium", "Seisund": "Kasutatud", "Hind": "—" },
+      "demo": { "shape": "box", "anchor": [0.5, 0.35, 0.08], "sizeFrac": [0.45, 0.12, 0.08] }
+    },
+    {
+      "id": "demo-katus",
+      "name": "Katuse detail (demo)",
+      "code": "K6-0003",
+      "category": "Kere ülaosa",
+      "description": "Kolmas kohatäide, et näha kataloogi gruppe ja otsingut.",
+      "info": { "Materjal": "Teras", "Seisund": "Uus", "Hind": "—" },
+      "demo": { "shape": "sphere", "anchor": [0.5, 0.85, 0.5], "sizeFrac": [0.12, 0.12, 0.12] }
+    }
+  ]
+}
