@@ -144,9 +144,13 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 const SCAN_URL = 'scan.glb';
 const PARTS_URL = 'parts.json';
 
-// true: the page only reads encrypted files (scan.glb.enc, parts.json.enc, ...) and asks for a password.
-// false: reads plain files (only for testing on your own computer).
-const REQUIRE_PASSWORD = true;
+// true: the page reads encrypted files (scan.glb.enc, ...) and decrypts them with the password (see README).
+// false: the page reads plain files. If GATE_HASH is set, a simple password screen is shown first.
+const REQUIRE_PASSWORD = false;
+
+// Simple password screen (NOT real protection: it only hides the page; the files themselves stay downloadable
+// by anyone who knows their addresses). SHA-256 of the password. Set to '' to turn the screen off.
+const GATE_HASH = '0c948de858f09e3091209ad691a9710fa38dc2d9bf330e34f926e25b06bc3cea';
 
 // ---------- Password / decryption (AES-GCM, key from PBKDF2) ----------
 const MAGIC = [0x49, 0x43, 0x45, 0x31];   // file header "ICE1"
@@ -187,6 +191,36 @@ async function fetchData(path) {
     err.wrongPassword = true;
     throw err;
   }
+}
+
+async function sha256Hex(text) {
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return hex(new Uint8Array(d));
+}
+
+function softGate() {
+  try { if (sessionStorage.getItem('catalog-ok') === GATE_HASH) return Promise.resolve(); } catch (e) {}
+  const gate = document.getElementById('gate');
+  const form = document.getElementById('gate-form');
+  const input = document.getElementById('gate-pw');
+  const msg = document.getElementById('gate-msg');
+  gate.style.display = 'flex';
+  input.focus();
+  return new Promise(resolve => {
+    form.addEventListener('submit', async ev => {
+      ev.preventDefault();
+      if (!input.value) return;
+      if (await sha256Hex(input.value) === GATE_HASH) {
+        try { sessionStorage.setItem('catalog-ok', GATE_HASH); } catch (e) {}
+        input.value = '';
+        gate.style.display = 'none';
+        resolve();
+      } else {
+        msg.textContent = 'Wrong password';
+        input.select();
+      }
+    });
+  });
 }
 
 function unlock() {
@@ -648,10 +682,10 @@ function animate() {
 (async () => {
   let stage = 'body';
   try {
-    if (REQUIRE_PASSWORD) {
+    if (REQUIRE_PASSWORD || GATE_HASH) {
       if (!(window.crypto && crypto.subtle)) throw new Error('this page must be opened over https');
       stage = 'gate';
-      await unlock();
+      await (REQUIRE_PASSWORD ? unlock() : softGate());
       stage = 'body';
     }
     await loadBody();

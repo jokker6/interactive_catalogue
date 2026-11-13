@@ -2,42 +2,35 @@
 
 A static page: the scanned body in the middle, the parts catalog on the side. Hovering a part enlarges it and shows its name, clicking opens its details (part code, info and a picture of the part). STEP files are read directly in the browser.
 
-## How the password protection works
+## Access protection (current setup: simple password screen)
 
-The page itself (`index.html`) contains no data and no password. The body scan, the part list and all part files are stored **encrypted** (`*.enc`). When someone opens the page it asks for the password and decrypts the data in the browser. Without the password the files are unreadable, even if someone downloads them.
+The page asks for a password before it shows anything. This is a **simple screen, not real protection**: the files (`scan.glb`, `parts.json`, STEP files) are stored as they are, so anyone who knows or guesses their web addresses can still download them. If the GitHub repository is public, anyone can also read them there. It keeps casual visitors out and nothing more.
 
-You keep the original (unencrypted) files on your own computer or in Dropbox, and only upload the encrypted versions.
+To change the password: compute the SHA-256 of the new password and put it in `GATE_HASH` near the top of the script in `index.html`. Setting `GATE_HASH` to `''` removes the screen.
+
+For real protection later there are two options:
+- **Cloudflare Pages + Cloudflare Access** (free for up to 50 users): visitors log in with their e-mail, the files are not served to anyone else. The repository can stay private.
+- **Encrypted files**: set `REQUIRE_PASSWORD = true` in `index.html` and use `encrypt.html` to encrypt the files before uploading them (`scan.glb.enc`, `parts.json.enc`, ...). Then the files are unreadable without the password.
 
 ## Files
-
-Your working folder (not uploaded):
-
-```
-scan.glb        simplified body scan (Blender export)
-parts.json      the catalog: one entry per part
-parts/          STEP files of the parts (bumper.step, fender.step, ...)
-images/         optional pictures of parts
-encrypt.html    the encryption tool (open it in a browser, keep it local)
-```
 
 Uploaded to GitHub (repository root):
 
 ```
 index.html
-scan.glb.enc
-parts.json.enc
-parts/bumper.step.enc, parts/fender.step.enc, ...
-images/...enc   (only if you use images)
+scan.glb        simplified body scan (Blender export)
+parts.json      the catalog: one entry per part
+parts/          STEP files of the parts
+images/         optional pictures of parts
 ```
+
+(`encrypt.html` is only needed for the encrypted setup and is not uploaded.)
 
 ## Updating the catalog
 
-1. Edit `parts.json` and/or add STEP files to `parts/` in your working folder.
-2. Open `encrypt.html` in a browser, enter the password, pick your working folder and press **Encrypt and download ZIP**.
-3. Unzip, and upload the `.enc` files to the repository (same folders, replacing the old ones).
-4. Wait a minute or two for GitHub Pages to update and refresh the page with Ctrl+F5.
-
-Use the same password every time. Never upload the unencrypted `scan.glb`, `parts.json` or `.step` files. If they were uploaded earlier, they stay readable in the repository's history, so the cleanest way is to create a new repository for the protected version and upload only the encrypted files there.
+1. Edit `parts.json` and/or add STEP files to `parts/`.
+2. Upload the changed files to the repository.
+3. Wait a minute or two for GitHub Pages to update and refresh with Ctrl+F5.
 
 ## Adding a part
 
@@ -78,11 +71,3 @@ When you click a part, a picture of it appears at the bottom of the info card. B
 | `zUp` | `false` if a STEP part comes out lying on its side |
 | `scale` | scale factor (for example `0.001` if the units are wrong) |
 | `position` | offset `[x, y, z]` in body units |
-
-## Password strength
-
-The encrypted files are public, so someone could try to guess the password on their own computer. A short password is fine for testing, but for real use choose a long phrase of 12 or more characters.
-
-## Testing without a password
-
-In `index.html` the line `const REQUIRE_PASSWORD = true;` can be set to `false` to read the plain files directly (use it only on your own computer with a local server, never on the published page).
