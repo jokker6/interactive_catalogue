@@ -52,6 +52,16 @@ Remember the comma between entries. File names are case-sensitive on GitHub Page
 
 A part stays where it is in its file, so export parts from the same coordinate system and in millimetres, like the body scan.
 
+## Faster loading: convert STEP to GLB
+
+Reading a STEP file in the browser is slow (the page has to rebuild the 3D shape every time it opens). A GLB file contains the finished triangles and loads many times faster. So convert each part once:
+
+1. Open `convert.html` in a browser (double-click, it needs an internet connection but uploads nothing).
+2. Pick your STEP files (several at once, or the whole `parts` folder) and press **Convert**.
+3. Unzip the result and upload the `.glb` files into `parts/`, next to the STEP files.
+
+`parts.json` does not need to change: when `parts/bumper.step` is listed and `parts/bumper.glb` exists, the page loads the GLB automatically. Parts without a GLB are still read from STEP. Convert a part again whenever its STEP file changes. Use the **Detail level** option if a part looks too angular (Fine) or the file is too big (Coarse).
+
 ## Selecting and hiding parts
 
 - **Click a part** (or its name in the list): it stays enlarged and highlighted, and the other parts fade, like the body. Click empty space or the x on the info card to bring everything back.

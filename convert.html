@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STEP to GLB converter</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg:#12151a; --panel:#1a1f27; --line:#2a313c; --text:#e6e9ee; --muted:#8b94a3; --accent:#f59e0b; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; padding:24px; }
+  main { max-width:680px; margin:0 auto; background:var(--panel); border:1px solid var(--line);
+    border-radius:12px; padding:24px; display:grid; gap:16px; }
+  h1 { margin:0; font-size:20px; }
+  p { margin:0; color:var(--muted); }
+  label { display:block; margin-bottom:4px; font-weight:600; }
+  input[type=file] { color:var(--muted); display:block; margin-bottom:6px; }
+  select { padding:8px 10px; border-radius:6px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
+  button { padding:11px; border-radius:6px; border:0; background:var(--accent); color:#1a1205;
+    font-weight:600; font-size:15px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  .row { display:flex; gap:8px; align-items:center; }
+  #list { font-size:13px; background:var(--bg); border:1px solid var(--line); border-radius:6px;
+    padding:6px 10px; max-height:260px; overflow:auto; display:none; }
+  #list div { display:flex; justify-content:space-between; gap:12px; padding:3px 0; }
+  #list .st { color:var(--muted); white-space:nowrap; }
+  #list .ok .st { color:#9be3a8; } #list .err .st { color:#ffb4b4; }
+  #msg { min-height:20px; } .ok { color:#9be3a8; } .err { color:#ffb4b4; }
+  code { background:var(--bg); padding:1px 5px; border-radius:4px; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<main>
+  <h1>STEP to GLB converter</h1>
+  <p>Converts your STEP files to GLB, which the catalog page loads many times faster than STEP. It runs in this browser tab, your files are not uploaded anywhere. Convert each part once, and again only when the part changes.</p>
+
+  <div>
+    <label>STEP files</label>
+    <input id="files" type="file" accept=".step,.stp,.STEP,.STP" multiple>
+    <input id="folder" type="file" webkitdirectory multiple>
+    <p>Pick several files at once, or a whole folder (for example your <code>parts</code> folder).</p>
+  </div>
+
+  <div class="row">
+    <div>
+      <label for="detail">Detail level</label>
+      <select id="detail">
+        <option value="standard" selected>Standard (same as the catalog page)</option>
+        <option value="coarse">Coarse (smaller, faster)</option>
+        <option value="fine">Fine (larger, smoother curves)</option>
+      </select>
+    </div>
+    <div style="margin-left:16px">
+      <label for="zup">Orientation</label>
+      <select id="zup">
+        <option value="1" selected>STEP is Z-up (usual, Fusion)</option>
+        <option value="0">STEP is Y-up</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="list"></div>
+  <button id="go" disabled>Convert</button>
+  <div id="msg"></div>
+  <p>One file downloads as <code>.glb</code>, several files as one ZIP with a <code>parts</code> folder inside. Upload the GLB files next to your STEP files (into <code>parts/</code>). The catalog page uses a <code>.glb</code> automatically when it finds one with the same name as the STEP file, so <code>parts.json</code> does not need to change.</p>
+</main>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+
+const OCCT_BASE = 'https://cdn.jsdelivr.net/npm/occt-import-js@0.0.23/dist/';
+const enc = new TextEncoder();
+const $ = id => document.getElementById(id);
+const listEl = $('list'), msg = $('msg'), go = $('go');
+let items = [];   // { file, name, row }
+
+function say(t, c) { msg.textContent = t; msg.className = c || ''; }
+
+function setFiles(fileList) {
+  const seen = new Set();
+  items = [];
+  for (const f of fileList) {
+    if (!/\.(step|stp)$/i.test(f.name)) continue;
+    const base = f.name.replace(/\.(step|stp)$/i, '');
+    if (seen.has(base)) continue;      // same name twice -> keep the first
+    seen.add(base);
+    items.push({ file: f, name: base });
+  }
+  items.sort((a, b) => a.name.localeCompare(b.name));
+  listEl.innerHTML = '';
+  listEl.style.display = items.length ? 'block' : 'none';
+  for (const it of items) {
+    const d = document.createElement('div');
+    const n = document.createElement('span'); n.textContent = it.file.name;
+    const s = document.createElement('span'); s.className = 'st'; s.textContent = (it.file.size / 1048576).toFixed(1) + ' MB';
+    d.append(n, s); listEl.append(d); it.row = d; it.st = s;
+  }
+  go.disabled = !items.length;
+  say(items.length ? items.length + ' STEP file(s) ready.' : 'No STEP files found.', items.length ? 'ok' : 'err');
+}
+$('files').addEventListener('change', e => setFiles(e.target.files));
+$('folder').addEventListener('change', e => setFiles(e.target.files));
+// files may already be selected (for example the browser kept them after a refresh)
+if ($('files').files.length) setFiles($('files').files);
+else if ($('folder').files.length) setFiles($('folder').files);
+
+// ---------- STEP reader ----------
+let occtPromise = null;
+function getOcct() {
+  occtPromise ||= new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = OCCT_BASE + 'occt-import-js.js';
+    s.onload = () => window.occtimportjs({ locateFile: n => OCCT_BASE + n }).then(resolve, reject);
+    s.onerror = () => reject(new Error('Could not load the STEP reader (check your internet connection)'));
+    document.head.appendChild(s);
+  });
+  return occtPromise;
+}
+
+const DETAIL = {
+  standard: null,
+  coarse: { linearUnit: 'millimeter', linearDeflectionType: 'bounding_box_ratio', linearDeflection: 0.004, angularDeflection: 0.8 },
+  fine:   { linearUnit: 'millimeter', linearDeflectionType: 'bounding_box_ratio', linearDeflection: 0.0003, angularDeflection: 0.25 }
+};
+
+function buildGroup(res, name, zUp) {
+  const group = new THREE.Group();
+  group.name = name;
+  let tris = 0, i = 0;
+  for (const m of res.meshes) {
+    const geo = new THREE.BufferGeometry();
+    const pos = m.attributes.position.array;
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    if (m.attributes.normal) geo.setAttribute('normal', new THREE.Float32BufferAttribute(m.attributes.normal.array, 3));
+    const idx = m.index.array;
+    const small = pos.length / 3 < 65536;
+    geo.setIndex(new THREE.BufferAttribute(small ? Uint16Array.from(idx) : Uint32Array.from(idx), 1));
+    if (!m.attributes.normal) geo.computeVertexNormals();
+    tris += idx.length / 3;
+    const color = m.color ? new THREE.Color(m.color[0], m.color[1], m.color[2]) : new THREE.Color(0xf59e0b);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, metalness: 0.3, roughness: 0.5, side: THREE.DoubleSide }));
+    mesh.name = m.name || (name + '_' + (++i));
+    group.add(mesh);
+  }
+  // Same rotation the catalog page applies to a STEP part, so the GLB lines up with the body scan.
+  if (zUp) group.rotation.x = -Math.PI / 2;
+  return { group, tris };
+}
+
+function exportGlb(group) {
+  return new Promise((resolve, reject) =>
+    new GLTFExporter().parse(group, r => resolve(new Uint8Array(r)), reject, { binary: true }));
+}
+
+// ---------- ZIP (stored) ----------
+const crcTable = (() => { const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(b) { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = crcTable[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function makeZip(entries) {
+  const chunks = [], central = []; let offset = 0;
+  for (const e of entries) {
+    const name = enc.encode(e.name), crc = crc32(e.data), size = e.data.length;
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+    lh.setUint16(12, 0x21, true); lh.setUint32(14, crc, true); lh.setUint32(18, size, true); lh.setUint32(22, size, true);
+    lh.setUint16(26, name.length, true);
+    chunks.push(new Uint8Array(lh.buffer), name, e.data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint16(14, 0x21, true); ch.setUint32(16, crc, true); ch.setUint32(20, size, true); ch.setUint32(24, size, true);
+    ch.setUint16(28, name.length, true); ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), name);
+    offset += 30 + name.length + size;
+  }
+  const cd = central.reduce((s, c) => s + c.length, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, entries.length, true); end.setUint16(10, entries.length, true);
+  end.setUint32(12, cd, true); end.setUint32(16, offset, true);
+  return new Blob([...chunks, ...central, new Uint8Array(end.buffer)], { type: 'application/zip' });
+}
+
+function download(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+// ---------- Convert ----------
+go.addEventListener('click', async () => {
+  go.disabled = true;
+  const out = [];
+  let failed = 0;
+  try {
+    say('Loading the STEP reader…');
+    const occt = await getOcct();
+    const params = DETAIL[$('detail').value];
+    const zUp = $('zup').value === '1';
+    let n = 0;
+    for (const it of items) {
+      say('Converting ' + (++n) + ' / ' + items.length + ': ' + it.file.name);
+      it.row.className = '';
+      it.st.textContent = 'converting…';
+      await new Promise(r => setTimeout(r, 30));     // let the page repaint
+      try {
+        const buf = new Uint8Array(await it.file.arrayBuffer());
+        const res = occt.ReadStepFile(buf, params);
+        if (!res.success || !res.meshes.length) throw new Error('could not read the STEP file');
+        const { group, tris } = buildGroup(res, it.name, zUp);
+        const glb = await exportGlb(group);
+        out.push({ name: it.name + '.glb', data: glb });
+        it.row.className = 'ok';
+        it.st.textContent = Math.round(tris).toLocaleString() + ' triangles · ' + (glb.length / 1048576).toFixed(2) + ' MB';
+      } catch (e) {
+        failed++;
+        it.row.className = 'err';
+        it.st.textContent = 'failed: ' + (e && e.message ? e.message : e);
+      }
+    }
+    if (!out.length) { say('Nothing was converted.', 'err'); return; }
+    if (out.length === 1) download(new Blob([out[0].data], { type: 'model/gltf-binary' }), out[0].name);
+    else download(makeZip(out.map(o => ({ name: 'parts/' + o.name, data: o.data }))), 'parts-glb.zip');
+    say('Done: ' + out.length + ' file(s) converted' + (failed ? ', ' + failed + ' failed (see list)' : '') + '.', failed ? 'err' : 'ok');
+  } catch (e) {
+    console.error(e);
+    say('Failed: ' + e.message, 'err');
+  } finally {
+    go.disabled = !items.length;
+  }
+});
+</script>
+</body>
+</html>

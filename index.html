@@ -426,7 +426,11 @@ async function loadParts() {
     const label = (def.name || def.id || '(unnamed)') + (def.file ? ' [' + def.file + ']' : '');
     let obj;
     try {
-      if (def.file && /\.(step|stp)$/i.test(def.file)) obj = await loadStep(def.file, def);
+      if (def.file && /\.(step|stp)$/i.test(def.file)) {
+        // Prefer a pre-converted GLB with the same name (much faster); fall back to reading the STEP file.
+        try { obj = (await parseGlb(await fetchData(def.file.replace(/\.(step|stp)$/i, '.glb')))).scene; }
+        catch (e) { if (e && e.wrongPassword) throw e; obj = await loadStep(def.file, def); }
+      }
       else if (def.file) obj = (await parseGlb(await fetchData(def.file))).scene;
       else if (def.demo) obj = demoObject(def);
       else { failed.push(label + ': needs a "file" (or "demo") entry'); continue; }
